@@ -1,10 +1,4 @@
-[build]
-  command = "pip install requests"
-  # Desta vez, vamos ser redundantes e explícitos
-  functions = "netlify/functions"
-
 [[redirects]]
   from = "/feed/*"
-  # O Netlify entende que a pasta "feed" contém a função
   to = "/.netlify/functions/feed?hash=:splat"
   status = 200
