@@ -1,6 +1,6 @@
 [build]
+  # Removemos a linha 'functions = ...'. Deixe o Netlify usar o padrão dele.
   command = "pip install requests"
-  functions = "netlify/functions"
 
 [[redirects]]
   from = "/feed/*"
