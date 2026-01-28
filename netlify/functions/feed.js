@@ -14,7 +14,6 @@ function normalizeNative(imovel) {
         return val;
     };
 
-    // Imagens Nativo
     let imgs = [];
     if (imovel.imagens && imovel.imagens.imagem) {
         const raw = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
@@ -43,7 +42,6 @@ function normalizeNative(imovel) {
 function normalizeOLX(listing) {
     const getVal = (val) => (val === undefined || val === null) ? "" : val;
 
-    // Achar preço correto (Venda ou Aluguel)
     const details = listing.Details || {};
     let price = "0";
     if (details.ListPrice && details.ListPrice['#text']) price = details.ListPrice['#text'];
@@ -51,7 +49,6 @@ function normalizeOLX(listing) {
     else if (typeof details.ListPrice === 'number') price = details.ListPrice;
     else if (typeof details.RentalPrice === 'number') price = details.RentalPrice;
 
-    // Imagens OLX
     let imgs = [];
     if (listing.Media && listing.Media.Item) {
         const raw = Array.isArray(listing.Media.Item) ? listing.Media.Item : [listing.Media.Item];
@@ -60,7 +57,6 @@ function normalizeOLX(listing) {
 
     const loc = listing.Location || {};
     
-    // CORREÇÃO AQUI: Adicionado parêntese que faltava no final da linha area
     return {
         id: getVal(listing.ListingID),
         title: getVal(listing.Title),
@@ -75,7 +71,7 @@ function normalizeOLX(listing) {
         endereco: getVal(loc.Address),
         quartos: String(getVal(details.Bedrooms) || "0"),
         banheiros: String(getVal(details.Bathrooms) || "0"),
-        area: String(getVal(details.LivingArea && details.LivingArea['#text'] ? details.LivingArea['#text'] : (details.LivingArea || "0"))), 
+        area: String(getVal(details.LivingArea && details.LivingArea['#text'] ? details.LivingArea['#text'] : (details.LivingArea || "0"))),
         images: imgs
     };
 }
@@ -85,20 +81,16 @@ function normalizeOLX(listing) {
 function mapListingType(rawOperation) {
     if (!rawOperation) return 'for_sale_by_agent'; 
     const op = String(rawOperation).toUpperCase();
-    if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO') || op.includes('RENT')) {
-        return 'for_rent_by_agent';
-    }
+    if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO') || op.includes('RENT')) return 'for_rent_by_agent';
     return 'for_sale_by_agent';
 }
 
 function mapPropertyType(rawType) {
     if (!rawType) return 'other';
     const t = String(rawType).toUpperCase();
-    
     if (t.includes('APARTAMENTO') || t.includes('FLAT') || t.includes('KITNET') || t.includes('/ APARTMENT')) return 'apartment';
     if (t.includes('CASA') || t.includes('SOBRADO') || t.includes('/ HOME')) return 'house';
     if (t.includes('LOTE') || t.includes('TERRENO') || t.includes('LAND')) return 'land';
-    
     return 'other'; 
 }
 
@@ -147,8 +139,10 @@ exports.handler = async function(event, context) {
     const urlFormat = params.url_format || null; 
     const clientPhone = params.phone || null; 
 
+    // SELEÇÃO DA URL DE ORIGEM
     let SOURCE_URL = "";
-    if (source === 'olx') {
+    // AGORA ACEITA 'group' OU 'olx'
+    if (source === 'olx' || source === 'group') {
         SOURCE_URL = `https://imob86.concept.inf.br/olx/${identifier}/grupo_olx.xml`;
     } else {
         SOURCE_URL = `https://xml.imob86.conceptsoft.com.br/Imob86XML/listar/${identifier}`;
@@ -166,7 +160,8 @@ exports.handler = async function(event, context) {
 
         let normalizedItems = [];
 
-        if (source === 'olx') {
+        // PROCESSAMENTO DE ACORDO COM A FONTE
+        if (source === 'olx' || source === 'group') {
             if (jsonObj.ListingDataFeed && jsonObj.ListingDataFeed.Listings && jsonObj.ListingDataFeed.Listings.Listing) {
                 const rawList = jsonObj.ListingDataFeed.Listings.Listing;
                 const list = Array.isArray(rawList) ? rawList : [rawList];
@@ -217,19 +212,12 @@ exports.handler = async function(event, context) {
                     "g:num_baths": item.banheiros,
                 };
 
-                if (item.images.length > 1) {
-                    itemObj["g:additional_image_link"] = item.images.slice(1, 11);
-                }
-                
-                if (item.area && item.area !== "0") {
-                    itemObj["g:area"] = { "#text": item.area, "@_unit": "sq m" };
-                }
+                if (item.images.length > 1) itemObj["g:additional_image_link"] = item.images.slice(1, 11);
+                if (item.area && item.area !== "0") itemObj["g:area"] = { "#text": item.area, "@_unit": "sq m" };
 
                 rssItems.push(itemObj);
 
-            } catch (err) {
-                console.log(`Erro processando item ${item.id}: ${err.message}`);
-            }
+            } catch (err) { continue; }
         }
 
         const builder = new XMLBuilder({ format: true, ignoreAttributes: false, cdataPropName: "title" });
@@ -239,7 +227,7 @@ exports.handler = async function(event, context) {
                 "@_version": "2.0",
                 channel: {
                     title: "Feed Imoveis",
-                    description: `Feed gerado via ${source === 'olx' ? 'Integração OLX' : 'Imob86 Nativo'}`,
+                    description: `Feed gerado via ${source === 'group' || source === 'olx' ? 'Grupo Zap/OLX' : 'Imob86 Nativo'}`,
                     link: clientDomain ? `https://${clientDomain}` : `https://wa.me/`,
                     item: rssItems
                 }
