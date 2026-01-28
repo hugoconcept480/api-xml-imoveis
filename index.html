@@ -127,15 +127,16 @@
             const outputFormat = document.getElementById('outputFormat').value;
             const destType = document.getElementById('destinationType').value;
             
-            const baseUrl = `https://${window.location.hostname}/feed/${id}`;
+            // --- AQUI ESTÁ A MUDANÇA (Adiciona .xml) ---
+            const baseUrl = `https://${window.location.hostname}/feed/${id}.xml`;
+            // ---------------------------------------------
+
             let params = [];
 
-            // Adiciona parâmetros
             if (source === 'group') params.push('source=group');
             else params.push('source=native');
 
             if (outputFormat === 'meta_native') params.push('output_format=meta_native');
-            // Se for RSS não precisa adicionar pois é o padrão
 
             if (destType === 'site') {
                 const domain = document.getElementById('domain').value.trim();
