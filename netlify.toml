@@ -1,7 +1,4 @@
 [build]
-  functions = "backend"
+  publish = "imob86-feed"   # or wherever your static files live
+  functions = "backend"     # where feed.py is located
 
-[[redirects]]
-  from = "/feed/*"
-  to = "/.netlify/functions/feed?hash=:splat"
-  status = 200
