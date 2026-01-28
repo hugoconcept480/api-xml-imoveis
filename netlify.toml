@@ -1,6 +1,6 @@
 [build]
-  # Mantemos backend por enquanto, mas o comando abaixo vai nos contar a verdade
-  functions = "backend"
+  #O comando abaixo vai nos contar a verdade
+  functions = "netlify/functions/"
   command = "echo '--- INICIO DA LISTAGEM ---' && ls -R && echo '--- FIM DA LISTAGEM ---'"
 
 [[redirects]]
