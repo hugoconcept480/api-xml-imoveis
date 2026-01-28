@@ -1,8 +1,4 @@
-[build]
-  functions = "api"
-
 [[redirects]]
   from = "/feed/*"
-  # Note que agora apontamos para "feed" e não mais "converter"
   to = "/.netlify/functions/feed?hash=:splat"
   status = 200
