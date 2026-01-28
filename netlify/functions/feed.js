@@ -1,27 +1,20 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { XMLParser, XMLBuilder } = require("fast-xml-parser");
 
-// --- CONFIGURAÇÕES ---
-const DOMINIO_VITRINE = "vitrine.imob86.conceptsoft.com.br"; 
 const WHATSAPP_PADRAO = "5586999999999"; 
 
-// ==========================================
-// 1. CAMADA DE NORMALIZAÇÃO (ENTRADA)
-// ==========================================
-
+// --- NORMALIZADORES ---
 function normalizeNative(imovel) {
     const getVal = (val) => {
         if (val === undefined || val === null) return "";
         if (typeof val === 'object' && Object.keys(val).length === 0) return ""; 
         return val;
     };
-
     let imgs = [];
     if (imovel.imagens && imovel.imagens.imagem) {
         const raw = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
         imgs = raw.map(img => getVal(img.path)).filter(p => p !== "");
     }
-
     return {
         id: getVal(imovel.idNaImobiliaria),
         title: getVal(imovel.tituloSite),
@@ -43,7 +36,6 @@ function normalizeNative(imovel) {
 
 function normalizeOLX(listing) {
     const getVal = (val) => (val === undefined || val === null) ? "" : val;
-
     const details = listing.Details || {};
     let price = "0";
     if (details.ListPrice && details.ListPrice['#text']) price = details.ListPrice['#text'];
@@ -56,9 +48,7 @@ function normalizeOLX(listing) {
         const raw = Array.isArray(listing.Media.Item) ? listing.Media.Item : [listing.Media.Item];
         imgs = raw.map(item => item['#text'] || item).filter(p => typeof p === 'string' && p.startsWith('http'));
     }
-
     const loc = listing.Location || {};
-    
     return {
         id: getVal(listing.ListingID),
         title: getVal(listing.Title),
@@ -78,10 +68,7 @@ function normalizeOLX(listing) {
     };
 }
 
-// ==========================================
-// 2. HELPERS (FORMATAÇÃO)
-// ==========================================
-
+// --- HELPERS ---
 function mapListingType(rawOperation) {
     if (!rawOperation) return 'for_sale_by_agent'; 
     const op = String(rawOperation).toUpperCase();
@@ -121,10 +108,7 @@ function buildLink(domain, id, format, phone) {
     return `https://${cleanDomain}/imovel/${id}`;
 }
 
-// ==========================================
-// 3. CAMADA DE SAÍDA (BUILDERS)
-// ==========================================
-
+// --- BUILDERS ---
 function generateRSS(items, clientDomain, params) {
     const rssItems = items.map(item => {
         try {
@@ -142,39 +126,19 @@ function generateRSS(items, clientDomain, params) {
                 "g:property_type": mapPropertyType(item.type),
                 "link": finalLink,
                 "g:image_link": item.images[0] || "",
-                "g:address": {
-                    "@_format": "struct",
-                    "g:addr1": item.endereco,
-                    "g:city": item.cidade,
-                    "g:region": item.estado,
-                    "g:postal_code": item.cep,
-                    "g:country": "BR"
-                },
+                "g:address": { "@_format": "struct", "g:addr1": item.endereco, "g:city": item.cidade, "g:region": item.estado, "g:postal_code": item.cep, "g:country": "BR" },
                 "g:neighborhood": item.bairro,
                 "g:num_beds": item.quartos,
                 "g:num_baths": item.banheiros,
             };
-
             if (item.images.length > 1) itemObj["g:additional_image_link"] = item.images.slice(1, 11);
             if (item.area && item.area !== "0") itemObj["g:area"] = { "#text": item.area, "@_unit": "sq m" };
-
             return itemObj;
         } catch (e) { return null; }
     }).filter(i => i !== null);
 
     const builder = new XMLBuilder({ format: true, ignoreAttributes: false, cdataPropName: "title" });
-    const finalObj = {
-        rss: {
-            "@_xmlns:g": "http://base.google.com/ns/1.0",
-            "@_version": "2.0",
-            channel: {
-                title: "Feed Imoveis",
-                description: "Feed RSS 2.0",
-                link: clientDomain ? `https://${clientDomain}` : `https://wa.me/`,
-                item: rssItems
-            }
-        }
-    };
+    const finalObj = { rss: { "@_xmlns:g": "http://base.google.com/ns/1.0", "@_version": "2.0", channel: { title: "Feed Imoveis", description: "Feed RSS 2.0", link: clientDomain ? `https://${clientDomain}` : `https://wa.me/`, item: rssItems } } };
     return `<?xml version="1.0" encoding="UTF-8"?>\n` + builder.build(finalObj);
 }
 
@@ -194,67 +158,39 @@ function generateMetaNative(items, clientDomain, params) {
                 price: formatPrice(item.price),
                 url: finalLink, 
                 image: { url: item.images[0] || "" },
-                address: {
-                    "@_format": "simple",
-                    component: [
-                        { "@_name": "addr1", "#text": item.endereco },
-                        { "@_name": "city", "#text": item.cidade },
-                        { "@_name": "region", "#text": item.estado },
-                        { "@_name": "postal_code", "#text": item.cep },
-                        { "@_name": "country", "#text": "Brazil" }
-                    ]
-                },
-                latitude: "0", 
-                longitude: "0",
-                neighborhood: item.bairro,
-                num_beds: item.quartos,
-                num_baths: item.banheiros
+                address: { "@_format": "simple", component: [ { "@_name": "addr1", "#text": item.endereco }, { "@_name": "city", "#text": item.cidade }, { "@_name": "region", "#text": item.estado }, { "@_name": "postal_code", "#text": item.cep }, { "@_name": "country", "#text": "Brazil" } ] },
+                latitude: "0", longitude: "0", neighborhood: item.bairro, num_beds: item.quartos, num_baths: item.banheiros
             };
             return itemObj;
         } catch (e) { return null; }
     }).filter(i => i !== null);
 
     const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
-    const finalObj = {
-        listings: {
-            title: "Feed Imoveis Meta Native",
-            listing: listingItems
-        }
-    };
+    const finalObj = { listings: { title: "Feed Imoveis Meta Native", listing: listingItems } };
     return `<?xml version="1.0" encoding="UTF-8"?>\n` + builder.build(finalObj);
 }
 
-// ==========================================
-// 4. MAIN HANDLER
-// ==========================================
-
+// --- MAIN ---
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
-    
     let identifier = params.hash; 
     
-    // CAPTURA DO CAMINHO DA URL
     if (!identifier && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
-        if (lastPart && lastPart !== 'feed') {
-            identifier = lastPart;
-        }
+        if (lastPart && lastPart !== 'feed') identifier = lastPart;
     }
 
-    // --- CORREÇÃO DO ".XML" ---
-    // Remove o .xml do final para poder usar o ID/Hash limpo nas buscas
+    // LIMPEZA DO .XML (O segredo para funcionar com ambos)
     if (identifier && identifier.toLowerCase().endsWith('.xml')) {
         identifier = identifier.replace(/\.xml$/i, '');
     }
-    // ---------------------------
 
     if (!identifier) return { statusCode: 400, body: "Identificador obrigatório." };
 
     const source = params.source || 'native'; 
     const outputFormat = params.output_format || 'rss'; 
     
-    // Busca Dados (Usa o identifier já limpo)
     let SOURCE_URL = "";
     if (source === 'olx' || source === 'group') {
         SOURCE_URL = `https://imob86.concept.inf.br/olx/${identifier}/grupo_olx.xml`;
@@ -284,12 +220,10 @@ exports.handler = async function(event, context) {
         }
 
         let finalXml = "";
-        const buildParams = { 
-            url_format: params.url_format, 
-            phone: params.phone 
-        };
+        const buildParams = { url_format: params.url_format, phone: params.phone };
         const clientDomain = params.domain || null; 
 
+        // DECIDE O FORMATO DO XML AQUI
         if (outputFormat === 'meta_native') {
             finalXml = generateMetaNative(normalizedItems, clientDomain, buildParams);
         } else {
