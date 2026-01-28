@@ -2,8 +2,8 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gerador XML Meta Ads</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f6f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
@@ -19,8 +19,8 @@
         .result-label { font-size: 0.75rem; text-transform: uppercase; color: #666; font-weight: bold; margin-bottom: 0.5rem; display: block; }
         .result-link { color: #0066FF; text-decoration: none; font-weight: 500; display: block; margin-bottom: 1rem; }
         .copy-btn { background: #fff; border: 1px solid #ccc; color: #333; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; width: 100%; }
-        .hidden { display: none !important; }
         .source-selector { background-color: #f0f7ff; padding: 10px; border-radius: 6px; border: 1px solid #cce5ff; margin-bottom: 20px; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
@@ -40,7 +40,7 @@
             <label for="outputFormat">Formato de Saída (Facebook)</label>
             <select id="outputFormat">
                 <option value="rss">RSS 2.0 (Google Merchant) - Padrão</option>
-                <option value="meta_native">Meta Native (XML Antigo)</option>
+                <option value="meta">Meta Native (XML Antigo)</option>
             </select>
         </div>
 
@@ -67,14 +67,14 @@
             <label for="phone">Número do WhatsApp</label>
             <input type="text" id="phone" placeholder="Ex: 86999998888">
         </div>
-
+        
         <div id="field-format" class="form-group hidden">
             <label for="format">Formato da Busca</label>
             <input type="text" id="format" placeholder="Ex: /busca?ref={id}">
-            <div class="helper">Use <b>{id}</b> onde entra o código.</div>
+            <div class="helper">⚠ Requer parâmetro de URL (não ficará no nome do arquivo)</div>
         </div>
 
-        <button class="action-btn" onclick="generateLink()">Gerar Link</button>
+        <button class="action-btn" onclick="generateLink()">Gerar Link Limpo</button>
 
         <div class="result" id="resultArea">
             <span class="result-label">Link Gerado:</span>
@@ -92,11 +92,11 @@
             if (source === 'native') {
                 label.innerText = "Hash do Cliente *";
                 input.placeholder = "Ex: D41D8CD98F...";
-                helper.innerText = "Usa o Hash gerado pelo Imob86 XML.";
+                helper.innerText = "Usa o Hash.";
             } else {
                 label.innerText = "ID da Imobiliária *";
-                input.placeholder = "Ex: 11, 91, 150...";
-                helper.innerText = "Usa o ID numérico da integração GrupoZap.";
+                input.placeholder = "Ex: 11, 91...";
+                helper.innerText = "Usa o ID numérico.";
             }
         }
 
@@ -120,35 +120,42 @@
             const source = document.getElementById('dataSource').value;
             const outputFormat = document.getElementById('outputFormat').value;
             const destType = document.getElementById('destinationType').value;
-            
-            // ADICIONA .xml SEMPRE (para enganar o Facebook)
-            const baseUrl = `https://${window.location.hostname}/feed/${id}.xml`;
-            
-            let params = [];
 
-            if (source === 'group') params.push('source=group');
-            else params.push('source=native');
+            // MONTAGEM DO NOME DO ARQUIVO COM TAGS
+            let fileName = id;
 
-            // ADICIONA PARAMETRO DE FORMATO SE FOR META NATIVE
-            if (outputFormat === 'meta_native') params.push('output_format=meta_native');
+            // Tag de Fonte (se não for nativo)
+            if (source === 'group') fileName += '-olx';
+            
+            // Tag de Formato (se não for rss)
+            if (outputFormat === 'meta') fileName += '-meta';
+
+            // Tag de Destino (Domínio ou WhatsApp)
+            let queryParams = [];
 
             if (destType === 'site') {
                 const domain = document.getElementById('domain').value.trim();
-                if (domain) params.push(`domain=${domain}`);
+                if (domain) fileName += `-dom-${domain}`;
             } else if (destType === 'whatsapp') {
                 let phone = document.getElementById('phone').value.replace(/\D/g, '');
                 if (phone) {
                     if (!phone.startsWith('55') && phone.length <= 11) phone = '55' + phone;
-                    params.push(`phone=${phone}`);
+                    fileName += `-wa-${phone}`;
                 }
             } else if (destType === 'custom') {
+                // Para custom URL com caracteres especiais (?=&), ainda precisamos de query params
+                // Pois não dá pra colocar '?' no nome do arquivo
                 const domain = document.getElementById('domain').value.trim();
                 const format = document.getElementById('format').value.trim();
-                if (domain) params.push(`domain=${domain}`);
-                if (format) params.push(`url_format=${encodeURIComponent(format)}`);
+                if (domain) fileName += `-dom-${domain}`;
+                if (format) queryParams.push(`url_format=${encodeURIComponent(format)}`);
             }
 
-            const finalUrl = params.length > 0 ? `${baseUrl}?${params.join('&')}` : baseUrl;
+            // Adiciona .xml no final
+            fileName += '.xml';
+
+            const baseUrl = `https://${window.location.hostname}/feed/${fileName}`;
+            const finalUrl = queryParams.length > 0 ? `${baseUrl}?${queryParams.join('&')}` : baseUrl;
             
             const linkEl = document.getElementById('finalLink');
             linkEl.href = finalUrl;
