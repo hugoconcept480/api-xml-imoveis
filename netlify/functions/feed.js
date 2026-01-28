@@ -6,7 +6,6 @@ const DOMINIO_VITRINE = "vitrine.imob86.conceptsoft.com.br";
 const WHATSAPP_PADRAO = "5586999999999"; 
 
 // --- PADRONIZADORES (NORMALIZERS) ---
-// O objetivo aqui é traduzir qualquer XML para um "Objeto Padrão" que o Facebook entende.
 
 function normalizeNative(imovel) {
     const getVal = (val) => {
@@ -27,8 +26,8 @@ function normalizeNative(imovel) {
         title: getVal(imovel.tituloSite),
         description: getVal(imovel.descricao),
         price: getVal(imovel.valor),
-        operation: getVal(imovel.operacao), // Ex: ALUGUEL
-        type: imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "", // Ex: Apartamento
+        operation: getVal(imovel.operacao), 
+        type: imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "", 
         bairro: imovel.bairro ? getVal(imovel.bairro.nome) : "",
         cidade: imovel.cidade ? getVal(imovel.cidade.nome) : "",
         estado: imovel.estado ? getVal(imovel.estado.nome) : "PI",
@@ -56,20 +55,19 @@ function normalizeOLX(listing) {
     let imgs = [];
     if (listing.Media && listing.Media.Item) {
         const raw = Array.isArray(listing.Media.Item) ? listing.Media.Item : [listing.Media.Item];
-        // O XML da OLX as vezes poe o link no #text
         imgs = raw.map(item => item['#text'] || item).filter(p => typeof p === 'string' && p.startsWith('http'));
     }
 
-    // Localização
     const loc = listing.Location || {};
     
+    // CORREÇÃO AQUI: Adicionado parêntese que faltava no final da linha area
     return {
         id: getVal(listing.ListingID),
         title: getVal(listing.Title),
         description: getVal(details.Description),
         price: String(price),
-        operation: getVal(listing.TransactionType), // Ex: For Rent, For Sale
-        type: getVal(details.PropertyType), // Ex: Residential / Apartment
+        operation: getVal(listing.TransactionType), 
+        type: getVal(details.PropertyType), 
         bairro: getVal(loc.Neighborhood),
         cidade: getVal(loc.City),
         estado: loc.State && loc.State['#text'] ? loc.State['#text'] : "PI",
@@ -77,7 +75,7 @@ function normalizeOLX(listing) {
         endereco: getVal(loc.Address),
         quartos: String(getVal(details.Bedrooms) || "0"),
         banheiros: String(getVal(details.Bathrooms) || "0"),
-        area: String(getVal(details.LivingArea && details.LivingArea['#text'] ? details.LivingArea['#text'] : (details.LivingArea || "0")),
+        area: String(getVal(details.LivingArea && details.LivingArea['#text'] ? details.LivingArea['#text'] : (details.LivingArea || "0"))), 
         images: imgs
     };
 }
@@ -87,7 +85,6 @@ function normalizeOLX(listing) {
 function mapListingType(rawOperation) {
     if (!rawOperation) return 'for_sale_by_agent'; 
     const op = String(rawOperation).toUpperCase();
-    // Cobre tanto "ALUGUEL" (Nativo) quanto "FOR RENT" (OLX)
     if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO') || op.includes('RENT')) {
         return 'for_rent_by_agent';
     }
@@ -98,11 +95,8 @@ function mapPropertyType(rawType) {
     if (!rawType) return 'other';
     const t = String(rawType).toUpperCase();
     
-    // Apartamento
     if (t.includes('APARTAMENTO') || t.includes('FLAT') || t.includes('KITNET') || t.includes('/ APARTMENT')) return 'apartment';
-    // Casa
     if (t.includes('CASA') || t.includes('SOBRADO') || t.includes('/ HOME')) return 'house';
-    // Terreno
     if (t.includes('LOTE') || t.includes('TERRENO') || t.includes('LAND')) return 'land';
     
     return 'other'; 
@@ -110,7 +104,6 @@ function mapPropertyType(rawType) {
 
 function formatPrice(valor) {
     if (!valor) return '0.00 BRL';
-    // Remove qualquer coisa que não seja numero ou ponto (caso venha R$)
     const clean = String(valor).replace(/[^\d.]/g, '');
     const num = parseFloat(clean);
     if (isNaN(num)) return '0.00 BRL';
@@ -138,8 +131,7 @@ function buildLink(domain, id, format, phone) {
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
     
-    // 1. Identificação
-    let identifier = params.hash; // Pode ser Hash ou ID
+    let identifier = params.hash; 
     if (!identifier && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
@@ -150,15 +142,11 @@ exports.handler = async function(event, context) {
 
     if (!identifier) return { statusCode: 400, body: "Identificador (Hash ou ID) obrigatório." };
 
-    // 2. Fonte de Dados (native | olx)
-    const source = params.source || 'native'; // Padrão é nativo para não quebrar links antigos
-
-    // 3. Parâmetros de Link
+    const source = params.source || 'native'; 
     const clientDomain = params.domain || null; 
     const urlFormat = params.url_format || null; 
     const clientPhone = params.phone || null; 
 
-    // 4. Seleção da URL de Origem
     let SOURCE_URL = "";
     if (source === 'olx') {
         SOURCE_URL = `https://imob86.concept.inf.br/olx/${identifier}/grupo_olx.xml`;
@@ -167,7 +155,6 @@ exports.handler = async function(event, context) {
     }
 
     try {
-        console.log(`Buscando dados em: ${SOURCE_URL}`);
         const response = await fetch(SOURCE_URL, { timeout: 20000 });
         if (!response.ok) {
             return { statusCode: 502, body: `Erro ao buscar XML (${source}): ${response.status}` };
@@ -177,18 +164,15 @@ exports.handler = async function(event, context) {
         const parser = new XMLParser({ ignoreAttributes: false });
         const jsonObj = parser.parse(xmlText);
 
-        // 5. Extração e Normalização dos Dados
         let normalizedItems = [];
 
         if (source === 'olx') {
-            // Lógica OLX
             if (jsonObj.ListingDataFeed && jsonObj.ListingDataFeed.Listings && jsonObj.ListingDataFeed.Listings.Listing) {
                 const rawList = jsonObj.ListingDataFeed.Listings.Listing;
                 const list = Array.isArray(rawList) ? rawList : [rawList];
                 normalizedItems = list.map(item => normalizeOLX(item));
             }
         } else {
-            // Lógica Nativa
             if (jsonObj.imoveis && jsonObj.imoveis.imovel) {
                 const rawList = jsonObj.imoveis.imovel;
                 const list = Array.isArray(rawList) ? rawList : [rawList];
@@ -196,14 +180,12 @@ exports.handler = async function(event, context) {
             }
         }
 
-        // 6. Geração do XML do Facebook (Usando dados normalizados)
         const rssItems = [];
 
         for (const item of normalizedItems) {
             try {
                 if (!item.id) continue;
 
-                // Título Automático
                 let titulo = item.title;
                 if (!titulo || typeof titulo !== 'string' || titulo.trim() === "") {
                     titulo = `${item.type} em ${item.bairro}`; 
@@ -235,12 +217,10 @@ exports.handler = async function(event, context) {
                     "g:num_baths": item.banheiros,
                 };
 
-                // Imagens adicionais
                 if (item.images.length > 1) {
                     itemObj["g:additional_image_link"] = item.images.slice(1, 11);
                 }
                 
-                // Area
                 if (item.area && item.area !== "0") {
                     itemObj["g:area"] = { "#text": item.area, "@_unit": "sq m" };
                 }
@@ -252,7 +232,6 @@ exports.handler = async function(event, context) {
             }
         }
 
-        // 7. Output Final
         const builder = new XMLBuilder({ format: true, ignoreAttributes: false, cdataPropName: "title" });
         const finalObj = {
             rss: {
