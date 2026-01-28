@@ -3,12 +3,25 @@ const { XMLParser, XMLBuilder } = require("fast-xml-parser");
 
 exports.handler = async function(event, context) {
     // 1. Pegar parâmetros
-    const params = event.queryStringParameters;
-    const clientHash = params.hash;
+    const params = event.queryStringParameters || {};
+    let clientHash = params.hash;
+
+    // --- CORREÇÃO DO LINK BONITO ---
+    // Se o hash não veio pelo parametro, tentamos pegar direto da URL
+    // A URL vem como "/feed/SEU_HASH_AQUI"
+    if (!clientHash && event.path) {
+        const parts = event.path.split('/');
+        const lastPart = parts[parts.length - 1]; // Pega o último pedaço da URL
+        if (lastPart && lastPart !== 'feed') {
+            clientHash = lastPart;
+        }
+    }
+    // -------------------------------
+
     const clientDomain = params.domain || 'seusite.com.br';
 
     if (!clientHash) {
-        return { statusCode: 400, body: "Hash obrigatorio." };
+        return { statusCode: 400, body: "Hash obrigatorio. (Verifique se a URL está correta)" };
     }
 
     const SOURCE_URL = `https://xml.imob86.conceptsoft.com.br/Imob86XML/listar/${clientHash}`;
@@ -21,14 +34,12 @@ exports.handler = async function(event, context) {
         }
         const xmlText = await response.text();
 
-        // 3. Converter XML para JSON para poder manipular
+        // 3. Converter XML para JSON
         const parser = new XMLParser({ ignoreAttributes: false });
         const jsonObj = parser.parse(xmlText);
 
-        // Verifica se achou imoveis
         let imoveis = [];
         if (jsonObj.imoveis && jsonObj.imoveis.imovel) {
-            // Garante que seja um array mesmo se tiver só 1 imóvel
             imoveis = Array.isArray(jsonObj.imoveis.imovel) ? jsonObj.imoveis.imovel : [jsonObj.imoveis.imovel];
         }
 
@@ -37,10 +48,7 @@ exports.handler = async function(event, context) {
         
         for (const imovel of imoveis) {
             try {
-                // Função auxiliar para pegar valor seguro
-                const getVal = (path) => {
-                    return path || "";
-                };
+                const getVal = (path) => path || "";
 
                 const id = getVal(imovel.idNaImobiliaria);
                 if (!id) continue;
@@ -52,27 +60,25 @@ exports.handler = async function(event, context) {
 
                 const price = `${getVal(imovel.valor) || '0'} BRL`;
                 const link = `https://${clientDomain}/imovel/${id}`;
-                const description = getVal(imovel.descricao).substring(0, 4900);
+                // Proteção contra descrição nula
+                const rawDesc = getVal(imovel.descricao);
+                const description = typeof rawDesc === 'string' ? rawDesc.substring(0, 4900) : "";
                 
-                // Endereço
                 const endereco = getVal(imovel.endereco);
                 const cidade = imovel.cidade ? getVal(imovel.cidade.nome) : "";
                 const cep = getVal(imovel.cep);
                 
-                // Imagens
                 let additionalImages = [];
                 let imageLink = "";
                 
                 if (imovel.imagens && imovel.imagens.imagem) {
                     const imgs = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
                     if (imgs.length > 0) {
-                        imageLink = imgs[0].path; // Primeira imagem
-                        // Resto das imagens (limite 10)
+                        imageLink = imgs[0].path; 
                         additionalImages = imgs.slice(1, 11).map(img => img.path);
                     }
                 }
 
-                // Quartos e Banheiros
                 const quartos = getVal(imovel.quartos) || "0";
                 const banheiros = getVal(imovel.banheiros) || "0";
 
@@ -100,17 +106,13 @@ exports.handler = async function(event, context) {
                 });
 
             } catch (err) {
-                console.log("Erro ao processar item", err);
+                console.log("Item ignorado", err);
                 continue;
             }
         }
 
         // 5. Construir XML Final
-        const builder = new XMLBuilder({ 
-            format: true, 
-            ignoreAttributes: false 
-        });
-        
+        const builder = new XMLBuilder({ format: true, ignoreAttributes: false });
         const finalObj = {
             rss: {
                 "@_xmlns:g": "http://base.google.com/ns/1.0",
