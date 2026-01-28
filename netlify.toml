@@ -1,3 +1,10 @@
+[build]
+  # Aponta para a pasta onde o arquivo está agora (netlify/functions)
+  functions = "netlify/functions"
+  
+  # O COMANDO MÁGICO: Isso obriga o Netlify a instalar o Python e ler o requirements.txt
+  command = "echo 'Ativando Python...'"
+
 [[redirects]]
   from = "/feed/*"
   to = "/.netlify/functions/feed?hash=:splat"
