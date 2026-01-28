@@ -1,0 +1,11 @@
+[build]
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Redirecionamento: Tudo que vier depois de /feed/ vira o hash
+[[redirects]]
+  from = "/feed/*"
+  to = "/.netlify/functions/converter?hash=:splat"
+  status = 200
