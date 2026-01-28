@@ -1,0 +1,5 @@
+import requests
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
+
+def handler(event, context): return { "statusCode": 200, "body": "Hello from feed function!" }
