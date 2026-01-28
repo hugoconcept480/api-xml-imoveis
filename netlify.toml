@@ -1,8 +1,8 @@
 [build]
-  # O Netlify já sabe procurar em netlify/functions por padrão
-  # Não precisamos definir nada aqui
+  functions = "api"
 
 [[redirects]]
   from = "/feed/*"
-  to = "/.netlify/functions/converter?hash=:splat"
+  # Note que agora apontamos para "feed" e não mais "converter"
+  to = "/.netlify/functions/feed?hash=:splat"
   status = 200
