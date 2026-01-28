@@ -1,8 +1,6 @@
 [build]
-  # Mudamos para a pasta raiz "functions"
-  functions = "functions"
-  # Adicionamos um comando falso para forçar o Netlify a "acordar"
-  command = "echo 'Instalando Python...'"
+  # O Netlify já sabe procurar em netlify/functions por padrão
+  # Não precisamos definir nada aqui
 
 [[redirects]]
   from = "/feed/*"
