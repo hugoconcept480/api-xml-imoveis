@@ -67,11 +67,11 @@
             <label for="phone">Número do WhatsApp</label>
             <input type="text" id="phone" placeholder="Ex: 86999998888">
         </div>
-        
+
         <div id="field-format" class="form-group hidden">
             <label for="format">Formato da Busca</label>
             <input type="text" id="format" placeholder="Ex: /busca?ref={id}">
-            <div class="helper">⚠ Requer parâmetro de URL (não ficará no nome do arquivo)</div>
+            <div class="helper">Use <b>{id}</b> onde entra o código.</div>
         </div>
 
         <button class="action-btn" onclick="generateLink()">Gerar Link Limpo</button>
@@ -130,9 +130,6 @@
             // Tag de Formato (se não for rss)
             if (outputFormat === 'meta') fileName += '-meta';
 
-            // Tag de Destino (Domínio ou WhatsApp)
-            let queryParams = [];
-
             if (destType === 'site') {
                 const domain = document.getElementById('domain').value.trim();
                 if (domain) fileName += `-dom-${domain}`;
@@ -143,19 +140,22 @@
                     fileName += `-wa-${phone}`;
                 }
             } else if (destType === 'custom') {
-                // Para custom URL com caracteres especiais (?=&), ainda precisamos de query params
-                // Pois não dá pra colocar '?' no nome do arquivo
                 const domain = document.getElementById('domain').value.trim();
                 const format = document.getElementById('format').value.trim();
                 if (domain) fileName += `-dom-${domain}`;
-                if (format) queryParams.push(`url_format=${encodeURIComponent(format)}`);
+                
+                // MÁGICA DO ENCODER: Converte o formato para Base64 e põe no nome do arquivo
+                if (format) {
+                    // btoa() cria Base64, e replace torna ele seguro para URL
+                    const encoded = btoa(format).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+                    fileName += `-fmt-${encoded}`;
+                }
             }
 
             // Adiciona .xml no final
             fileName += '.xml';
 
-            const baseUrl = `https://${window.location.hostname}/feed/${fileName}`;
-            const finalUrl = queryParams.length > 0 ? `${baseUrl}?${queryParams.join('&')}` : baseUrl;
+            const finalUrl = `https://${window.location.hostname}/feed/${fileName}`;
             
             const linkEl = document.getElementById('finalLink');
             linkEl.href = finalUrl;
