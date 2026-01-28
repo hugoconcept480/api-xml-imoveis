@@ -1,3 +1,6 @@
+[build]
+  functions = "backend"
+
 [[redirects]]
   from = "/feed/*"
   to = "/.netlify/functions/feed?hash=:splat"
