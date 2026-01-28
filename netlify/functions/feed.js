@@ -1,46 +1,47 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { XMLParser, XMLBuilder } = require("fast-xml-parser");
 
-// --- FUNÇÕES AUXILIARES DE MAPEAMENTO ---
+// --- 1. CONFIGURAÇÃO DO SEU DOMÍNIO ---
+// Coloque aqui o site da sua imobiliária para não ficar "seusite.com.br"
+// Exemplo: "www.imobiliariax.com.br"
+const DOMINIO_PADRAO = "www.suaimobiliaria.com.br"; 
 
-// 1. Mapeia VENDA/ALUGUEL para o padrão do Facebook
+// --- 2. FUNÇÕES DE TRADUÇÃO (Meta Ads) ---
+
 function mapListingType(operacao) {
-    if (!operacao) return 'for_sale_by_agent'; // Padrão
-    const op = operacao.toUpperCase();
+    if (!operacao) return 'for_sale_by_agent'; 
+    const op = String(operacao).toUpperCase();
+    // Se tiver "ALUGUEL" no nome, vira aluguel no Facebook
     if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO')) {
         return 'for_rent_by_agent';
     }
     return 'for_sale_by_agent';
 }
 
-// 2. Mapeia o Tipo do Imóvel (Português -> Inglês do Facebook)
 function mapPropertyType(tipo) {
     if (!tipo) return 'other';
-    const t = tipo.toUpperCase();
+    const t = String(tipo).toUpperCase();
     
-    if (t.includes('APARTAMENTO') || t.includes('FLAT') || t.includes('COBERTURA')) return 'apartment';
+    // Mapeamento Português -> Inglês (Padrão Meta)
+    if (t.includes('APARTAMENTO') || t.includes('FLAT') || t.includes('KITNET')) return 'apartment';
     if (t.includes('CASA') || t.includes('SOBRADO')) return 'house';
     if (t.includes('LOTE') || t.includes('TERRENO')) return 'land';
-    if (t.includes('COMERCIAL') || t.includes('LOJA') || t.includes('SALA')) return 'other';
     
-    return 'other'; // Padrão se não achar nada
+    return 'other'; 
 }
 
-// 3. Formata Preço (Remove erros e garante BRL)
 function formatPrice(valor) {
     if (!valor) return '0.00 BRL';
-    // Garante que seja numero
-    const num = parseFloat(valor);
-    return `${num.toFixed(2)} BRL`;
+    return `${parseFloat(valor).toFixed(2)} BRL`;
 }
 
-// --- FUNÇÃO PRINCIPAL ---
+// --- 3. FUNÇÃO PRINCIPAL ---
 
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
     let clientHash = params.hash;
 
-    // Tenta pegar hash da URL se não vier por parametro
+    // Pega o hash da URL amigável (/feed/HASH)
     if (!clientHash && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
@@ -49,7 +50,8 @@ exports.handler = async function(event, context) {
         }
     }
 
-    const clientDomain = params.domain || 'seusite.com.br';
+    // Define o domínio: ou vem pela URL (?domain=x) ou usa o padrão que definimos acima
+    const clientDomain = params.domain || DOMINIO_PADRAO;
 
     if (!clientHash) {
         return { statusCode: 400, body: "Hash obrigatorio." };
@@ -58,7 +60,8 @@ exports.handler = async function(event, context) {
     const SOURCE_URL = `https://xml.imob86.conceptsoft.com.br/Imob86XML/listar/${clientHash}`;
 
     try {
-        const response = await fetch(SOURCE_URL, { timeout: 15000 }); // Aumentei timeout pra 15s
+        // Timeout aumentado para garantir que dê tempo de baixar o XML grande
+        const response = await fetch(SOURCE_URL, { timeout: 15000 });
         if (!response.ok) {
             return { statusCode: 502, body: `Erro na Origem: ${response.status}` };
         }
@@ -68,10 +71,8 @@ exports.handler = async function(event, context) {
         const jsonObj = parser.parse(xmlText);
 
         let imoveis = [];
-        // Verifica se existe a tag <imoveis> e <imovel>
         if (jsonObj.imoveis && jsonObj.imoveis.imovel) {
-            // Se tiver só 1 imóvel, o parser retorna objeto. Se tiver vários, retorna array.
-            // Essa linha garante que sempre seja um Array para não quebrar o loop.
+            // Garante que seja sempre uma lista (Array)
             imoveis = Array.isArray(jsonObj.imoveis.imovel) ? jsonObj.imoveis.imovel : [jsonObj.imoveis.imovel];
         }
 
@@ -79,51 +80,43 @@ exports.handler = async function(event, context) {
         
         for (const imovel of imoveis) {
             try {
-                // Função segura para pegar valor (trata nulos e objetos vazios)
+                // Função auxiliar para evitar erro se o campo não existir
                 const getVal = (val) => {
                     if (val === undefined || val === null) return "";
-                    if (typeof val === 'object' && Object.keys(val).length === 0) return ""; // Caso de tag vazia <tag/>
+                    // Se for objeto vazio (ex: <tag/>), retorna vazio
+                    if (typeof val === 'object' && Object.keys(val).length === 0) return ""; 
                     return val;
                 };
 
                 const id = getVal(imovel.idNaImobiliaria);
-                if (!id) continue; // Sem ID não serve pro Facebook
+                if (!id) continue; 
 
-                // Dados Básicos
+                // --- DADOS DO IMÓVEL ---
                 const bairro = imovel.bairro ? getVal(imovel.bairro.nome) : "";
-                const tipoNome = imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "";
                 const cidade = imovel.cidade ? getVal(imovel.cidade.nome) : "";
+                const tipoNome = imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "Imóvel";
                 
-                // Título Inteligente
+                // Título Automático (se não tiver no XML)
                 let titulo = getVal(imovel.tituloSite);
                 if (!titulo) {
-                    // Ex: "Apartamento em Dirceu I - Teresina"
                     titulo = `${tipoNome} em ${bairro}`; 
                     if (cidade) titulo += ` - ${cidade}`;
                 }
 
-                // Preço
+                // Descrição e Preço
+                const rawDesc = getVal(imovel.descricao);
+                const description = String(rawDesc).substring(0, 4900) || titulo;
                 const price = formatPrice(imovel.valor);
 
-                // Mapeamentos para o Facebook
-                const operacao = getVal(imovel.operacao); // ALUGUEL ou VENDA
-                const listingType = mapListingType(operacao);
-                const propertyType = mapPropertyType(tipoNome);
+                // --- TRADUÇÃO DE CAMPOS (A Mágica acontece aqui) ---
+                const operacao = getVal(imovel.operacao); // Ex: ALUGUEL
+                const listingType = mapListingType(operacao); // Vira: for_rent_by_agent
 
-                // Link e Descrição
+                const propertyType = mapPropertyType(tipoNome); // Ex: Casa -> house
+
+                // Link Correto
                 const link = `https://${clientDomain}/imovel/${id}`;
-                const rawDesc = getVal(imovel.descricao);
-                // Limita descrição a 4900 chars (limite do Google/Meta é 5000)
-                const description = String(rawDesc).substring(0, 4900) || titulo;
 
-                // Endereço
-                const endereco = getVal(imovel.endereco);
-                const cep = getVal(imovel.cep);
-                
-                // Latitude/Longitude (Se tiver no XML, usamos. Se for 0.0, não mandamos pra não dar erro de validação)
-                const lat = parseFloat(imovel.latitude);
-                const long = parseFloat(imovel.longitude);
-                
                 // Imagens
                 let additionalImages = [];
                 let imageLink = "";
@@ -131,34 +124,33 @@ exports.handler = async function(event, context) {
                 if (imovel.imagens && imovel.imagens.imagem) {
                     const imgs = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
                     if (imgs.length > 0) {
-                        // Pega o PATH. Se o path for objeto, tenta converter, mas no seu XML parece string direta dentro de path.
-                        imageLink = imgs[0].path; 
-                        // Facebook aceita até 20 imagens. Pegamos as próximas 10.
-                        additionalImages = imgs.slice(1, 11).map(img => img.path);
+                        imageLink = getVal(imgs[0].path);
+                        // Pega até 10 fotos adicionais
+                        additionalImages = imgs.slice(1, 11).map(img => getVal(img.path)).filter(p => p !== "");
                     }
                 }
 
-                // Quartos e Banheiros
-                const quartos = getVal(imovel.quartos) || "0";
-                const banheiros = getVal(imovel.banheiros) || "0";
-                const area = getVal(imovel.area);
+                // --- CORREÇÃO DE QUARTOS/BANHEIROS ---
+                // Forçamos conversão para String para evitar que o número 0 suma
+                const quartos = String(getVal(imovel.quartos) || "0");
+                const banheiros = String(getVal(imovel.banheiros) || "0");
+                const area = String(getVal(imovel.area) || "0");
 
-                // Monta o objeto do item
                 const itemObj = {
                     "g:home_listing_id": id,
                     "title": titulo,
                     "g:description": description,
                     "g:price": price,
-                    "g:listing_type": listingType, // Agora dinâmico (For Rent / For Sale)
-                    "g:property_type": propertyType, // Agora dinâmico (House / Apartment / Land)
+                    "g:listing_type": listingType, 
+                    "g:property_type": propertyType,
                     "link": link,
                     "g:image_link": imageLink,
                     "g:address": {
                         "@_format": "struct",
-                        "g:addr1": endereco,
+                        "g:addr1": getVal(imovel.endereco),
                         "g:city": cidade,
                         "g:region": getVal(imovel.estado?.nome) || "PI",
-                        "g:postal_code": cep,
+                        "g:postal_code": getVal(imovel.cep),
                         "g:country": "BR"
                     },
                     "g:neighborhood": bairro,
@@ -166,47 +158,27 @@ exports.handler = async function(event, context) {
                     "g:num_baths": banheiros,
                 };
 
-                // Adiciona imagens extras se tiver
-                if (additionalImages.length > 0) {
-                    itemObj["g:additional_image_link"] = additionalImages;
-                }
-
-                // Adiciona Lat/Long apenas se forem válidos (diferente de 0)
-                if (lat !== 0 && long !== 0) {
-                    itemObj["g:latitude"] = lat;
-                    itemObj["g:longitude"] = long;
-                }
-                
-                // Adiciona área se tiver
-                 if (area && area != "0.0") {
-                    itemObj["g:area"] = {
-                        "#text": area,
-                        "@_unit": "sq m" // Metros quadrados
-                    };
-                }
+                // Adicionais condicionais (só adiciona se tiver dados)
+                if (additionalImages.length > 0) itemObj["g:additional_image_link"] = additionalImages;
+                if (area !== "0") itemObj["g:area"] = { "#text": area, "@_unit": "sq m" };
 
                 rssItems.push(itemObj);
 
             } catch (err) {
-                console.log(`Erro ao processar imóvel ID ${imovel.idNaImobiliaria || 'desconhecido'}:`, err.message);
+                console.log(`Erro item ${imovel.idNaImobiliaria}:`, err.message);
                 continue;
             }
         }
 
-        // 5. Construir XML Final
-        const builder = new XMLBuilder({ 
-            format: true, 
-            ignoreAttributes: false,
-            cdataPropName: "title" // Opcional: protege caracteres especiais no título
-        });
-        
+        // XML Final
+        const builder = new XMLBuilder({ format: true, ignoreAttributes: false, cdataPropName: "title" });
         const finalObj = {
             rss: {
                 "@_xmlns:g": "http://base.google.com/ns/1.0",
                 "@_version": "2.0",
                 channel: {
                     title: "Feed Imoveis",
-                    description: "Integração Imob86 para Meta Ads",
+                    description: "Integração Imob86 Meta Ads",
                     link: `https://${clientDomain}`,
                     item: rssItems
                 }
@@ -219,13 +191,12 @@ exports.handler = async function(event, context) {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/xml; charset=utf-8',
-                'Cache-Control': 'public, max-age=1800' // Cache de 30 minutos
+                'Cache-Control': 'public, max-age=3600'
             },
             body: finalXml
         };
 
     } catch (error) {
-        console.error(error);
-        return { statusCode: 500, body: `Erro interno: ${error.toString()}` };
+        return { statusCode: 500, body: error.toString() };
     }
 };
