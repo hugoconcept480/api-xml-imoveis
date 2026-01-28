@@ -1,6 +1,5 @@
 [build]
-  #O comando abaixo vai nos contar a verdade
-  functions = "netlify/functions/"
+  functions = "netlify/functions"
   command = "echo '--- INICIO DA LISTAGEM ---' && ls -R && echo '--- FIM DA LISTAGEM ---'"
 
 [[redirects]]
