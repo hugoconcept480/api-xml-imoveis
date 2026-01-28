@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Links - Feed Meta Ads</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f6f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        h1 { color: #333; margin-top: 0; font-size: 1.5rem; text-align: center; }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; color: #555; font-weight: 500; font-size: 0.9rem; }
+        input, select { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
+        .helper { font-size: 0.8rem; color: #888; margin-top: 0.25rem; }
+        button { width: 100%; padding: 1rem; background: #0066FF; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0052cc; }
+        .result { margin-top: 2rem; background: #eef2f7; padding: 1rem; border-radius: 6px; word-break: break-all; display: none; }
+        .result-label { font-size: 0.75rem; text-transform: uppercase; color: #666; font-weight: bold; margin-bottom: 0.5rem; display: block; }
+        .result-link { color: #0066FF; text-decoration: none; font-weight: 500; }
+        .copy-btn { background: #eee; color: #333; margin-top: 0.5rem; padding: 0.5rem; font-size: 0.9rem; }
+        .copy-btn:hover { background: #ddd; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>Gerador de Feed XML</h1>
+        
+        <div class="form-group">
+            <label>Hash do Cliente *</label>
+            <input type="text" id="hash" placeholder="Ex: D41D8CD98F..." required>
+        </div>
+
+        <div class="form-group">
+            <label>Tipo de Destino</label>
+            <select id="destinationType" onchange="toggleFields()">
+                <option value="site">Site Próprio (Padrão)</option>
+                <option value="whatsapp">Sem Site (WhatsApp)</option>
+                <option value="custom">Site com Busca Personalizada</option>
+            </select>
+        </div>
+
+        <div id="field-domain" class="form-group">
+            <label>Domínio do Site</label>
+            <input type="text" id="domain" placeholder="Ex: imobiliariasilva.com.br">
+            <div class="helper">Onde o imóvel será aberto.</div>
+        </div>
+
+        <div id="field-phone" class="form-group hidden">
+            <label>WhatsApp (com DDD)</label>
+            <input type="text" id="phone" placeholder="Ex: 86999998888">
+            <div class="helper">Apenas números. Inclua o DDD.</div>
+        </div>
+
+        <div id="field-format" class="form-group hidden">
+            <label>Formato da URL</label>
+            <input type="text" id="format" placeholder="Ex: /busca?ref={id}">
+            <div class="helper">Use {id} onde entra o código.</div>
+        </div>
+
+        <button onclick="generateLink()">Gerar Link</button>
+
+        <div class="result" id="resultArea">
+            <span class="result-label">Link para o Gerenciador de Comércio:</span>
+            <a href="#" id="finalLink" class="result-link" target="_blank">...</a>
+            <button class="copy-btn" onclick="copyLink()">Copiar Link</button>
+        </div>
+    </div>
+
+    <script>
+        function toggleFields() {
+            const type = document.getElementById('destinationType').value;
+            
+            // Reset visual
+            document.getElementById('field-domain').classList.add('hidden');
+            document.getElementById('field-phone').classList.add('hidden');
+            document.getElementById('field-format').classList.add('hidden');
+
+            if (type === 'site') {
+                document.getElementById('field-domain').classList.remove('hidden');
+            } else if (type === 'whatsapp') {
+                document.getElementById('field-phone').classList.remove('hidden');
+            } else if (type === 'custom') {
+                document.getElementById('field-domain').classList.remove('hidden');
+                document.getElementById('field-format').classList.remove('hidden');
+            }
+        }
+
+        function generateLink() {
+            const hash = document.getElementById('hash').value.trim();
+            if (!hash) { alert("Digite o Hash do cliente!"); return; }
+
+            const type = document.getElementById('destinationType').value;
+            const baseUrl = `https://${window.location.hostname}/feed/${hash}`;
+            let params = [];
+
+            if (type === 'site') {
+                const domain = document.getElementById('domain').value.trim();
+                if (domain) params.push(`domain=${domain}`);
+            } 
+            else if (type === 'whatsapp') {
+                let phone = document.getElementById('phone').value.trim();
+                // Limpa caracteres não numéricos
+                phone = phone.replace(/\D/g, '');
+                // Adiciona 55 se não tiver
+                if (phone && !phone.startsWith('55')) phone = '55' + phone;
+                
+                if (phone) params.push(`phone=${phone}`);
+            }
+            else if (type === 'custom') {
+                const domain = document.getElementById('domain').value.trim();
+                const format = document.getElementById('format').value.trim();
+                if (domain) params.push(`domain=${domain}`);
+                if (format) params.push(`url_format=${encodeURIComponent(format)}`);
+            }
+
+            const finalUrl = params.length > 0 ? `${baseUrl}?${params.join('&')}` : baseUrl;
+
+            document.getElementById('finalLink').href = finalUrl;
+            document.getElementById('finalLink').innerText = finalUrl;
+            document.getElementById('resultArea').style.display = 'block';
+        }
+
+        function copyLink() {
+            const url = document.getElementById('finalLink').innerText;
+            navigator.clipboard
