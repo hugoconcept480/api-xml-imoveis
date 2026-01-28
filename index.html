@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerador de Feed XML - Imob86</title>
+    <title>Gerador XML Meta Ads</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f4f6f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .card { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
@@ -32,12 +32,20 @@
         <h1>Gerador XML Meta Ads</h1>
         
         <div class="form-group source-selector">
-            <label for="dataSource">Fonte de Dados</label>
+            <label for="dataSource">Fonte de Dados (Entrada)</label>
             <select id="dataSource" onchange="toggleSource()">
-                <option value="native">XML padrão Hash</option>
-                <option value="group">XML padrão GrupoZap</option>
+                <option value="native">XML padrão Hash (Imob86)</option>
+                <option value="group">XML padrão GrupoZap (OLX)</option>
             </select>
             <div class="helper" id="sourceHelper">Usa o Hash de 32 letras do sistema.</div>
+        </div>
+        
+        <div class="form-group">
+            <label for="outputFormat">Formato de Saída (Facebook)</label>
+            <select id="outputFormat">
+                <option value="rss">RSS 2.0 (Google Merchant) - Padrão</option>
+                <option value="meta_native">Meta Native (XML Antigo)</option>
+            </select>
         </div>
 
         <div class="form-group">
@@ -93,7 +101,6 @@
             } else {
                 label.innerText = "ID da Imobiliária *";
                 input.placeholder = "Ex: 11, 91, 150...";
-                // Texto de ajuda Atualizado
                 helper.innerText = "Usa o ID numérico da integração GrupoZap.";
             }
         }
@@ -117,16 +124,18 @@
             if (!id) { alert("Preencha o Hash ou ID!"); return; }
 
             const source = document.getElementById('dataSource').value;
+            const outputFormat = document.getElementById('outputFormat').value;
             const destType = document.getElementById('destinationType').value;
             
             const baseUrl = `https://${window.location.hostname}/feed/${id}`;
             let params = [];
 
-            if (source === 'group') {
-                params.push('source=group');
-            } else {
-                params.push('source=native');
-            }
+            // Adiciona parâmetros
+            if (source === 'group') params.push('source=group');
+            else params.push('source=native');
+
+            if (outputFormat === 'meta_native') params.push('output_format=meta_native');
+            // Se for RSS não precisa adicionar pois é o padrão
 
             if (destType === 'site') {
                 const domain = document.getElementById('domain').value.trim();
