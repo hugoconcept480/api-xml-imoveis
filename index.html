@@ -13,21 +13,17 @@
         input, select { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
         input:focus, select:focus { border-color: #0066FF; outline: none; }
         .helper { font-size: 0.8rem; color: #888; margin-top: 0.25rem; }
-        
         button.action-btn { width: 100%; padding: 1rem; background: #0066FF; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; }
         button.action-btn:hover { background: #0052cc; }
-        
         .result { margin-top: 2rem; background: #eef2f7; padding: 1rem; border-radius: 6px; word-break: break-all; display: none; border: 1px solid #dce4ec; }
         .result-label { font-size: 0.75rem; text-transform: uppercase; color: #666; font-weight: bold; margin-bottom: 0.5rem; display: block; }
         .result-link { color: #0066FF; text-decoration: none; font-weight: 500; display: block; margin-bottom: 1rem; }
         .copy-btn { background: #fff; border: 1px solid #ccc; color: #333; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-size: 0.9rem; width: 100%; }
-        .copy-btn:hover { background: #f9f9f9; }
         .hidden { display: none !important; }
         .source-selector { background-color: #f0f7ff; padding: 10px; border-radius: 6px; border: 1px solid #cce5ff; margin-bottom: 20px; }
     </style>
 </head>
 <body>
-
     <div class="card">
         <h1>Gerador XML Meta Ads</h1>
         
@@ -93,7 +89,6 @@
             const label = document.getElementById('labelIdentifier');
             const input = document.getElementById('identifier');
             const helper = document.getElementById('sourceHelper');
-
             if (source === 'native') {
                 label.innerText = "Hash do Cliente *";
                 input.placeholder = "Ex: D41D8CD98F...";
@@ -110,7 +105,6 @@
             document.getElementById('field-domain').classList.add('hidden');
             document.getElementById('field-phone').classList.add('hidden');
             document.getElementById('field-format').classList.add('hidden');
-
             if (type === 'site') document.getElementById('field-domain').classList.remove('hidden');
             else if (type === 'whatsapp') document.getElementById('field-phone').classList.remove('hidden');
             else if (type === 'custom') {
@@ -127,15 +121,15 @@
             const outputFormat = document.getElementById('outputFormat').value;
             const destType = document.getElementById('destinationType').value;
             
-            // --- AQUI ESTÁ A MUDANÇA (Adiciona .xml) ---
+            // ADICIONA .xml SEMPRE (para enganar o Facebook)
             const baseUrl = `https://${window.location.hostname}/feed/${id}.xml`;
-            // ---------------------------------------------
-
+            
             let params = [];
 
             if (source === 'group') params.push('source=group');
             else params.push('source=native');
 
+            // ADICIONA PARAMETRO DE FORMATO SE FOR META NATIVE
             if (outputFormat === 'meta_native') params.push('output_format=meta_native');
 
             if (destType === 'site') {
@@ -163,8 +157,7 @@
         }
 
         function copyLink() {
-            navigator.clipboard.writeText(document.getElementById('finalLink').innerText)
-                .then(() => alert("Copiado!"));
+            navigator.clipboard.writeText(document.getElementById('finalLink').innerText).then(() => alert("Copiado!"));
         }
 
         window.onload = function() { toggleSource(); toggleFields(); };
