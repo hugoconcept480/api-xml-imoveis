@@ -29,13 +29,13 @@
 <body>
 
     <div class="card">
-        <h1>Gerador Meta Ads</h1>
+        <h1>Gerador XML Meta Ads</h1>
         
         <div class="form-group source-selector">
             <label for="dataSource">Fonte de Dados</label>
             <select id="dataSource" onchange="toggleSource()">
-                <option value="native">Sistema Imob86 (Padrão)</option>
-                <option value="olx">Integração OLX/VivaReal</option>
+                <option value="native">XML padrão Hash</option>
+                <option value="group">XML padrão GrupoZap</option>
             </select>
             <div class="helper" id="sourceHelper">Usa o Hash de 32 letras do sistema.</div>
         </div>
@@ -93,7 +93,8 @@
             } else {
                 label.innerText = "ID da Imobiliária *";
                 input.placeholder = "Ex: 11, 91, 150...";
-                helper.innerText = "Usa o ID numérico da integração OLX.";
+                // Texto de ajuda Atualizado
+                helper.innerText = "Usa o ID numérico da integração GrupoZap.";
             }
         }
 
@@ -118,12 +119,14 @@
             const source = document.getElementById('dataSource').value;
             const destType = document.getElementById('destinationType').value;
             
-            // Base URL: /feed/IDENTIFICADOR
             const baseUrl = `https://${window.location.hostname}/feed/${id}`;
             let params = [];
 
-            // Se for OLX, adiciona source=olx
-            if (source === 'olx') params.push('source=olx');
+            if (source === 'group') {
+                params.push('source=group');
+            } else {
+                params.push('source=native');
+            }
 
             if (destType === 'site') {
                 const domain = document.getElementById('domain').value.trim();
