@@ -1,3 +1,7 @@
+[build]
+  # Para JS, o Netlify detecta o package.json e roda "npm install" sozinho.
+  # Não precisamos definir nada manual aqui!
+
 [[redirects]]
   from = "/feed/*"
   to = "/.netlify/functions/feed?hash=:splat"
