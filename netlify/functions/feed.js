@@ -99,12 +99,10 @@ function mapPropertyType(rawType) {
 }
 
 function formatPrice(valor) {
-    if (!valor) return '0.00 USD'; // Default se falhar
+    if (!valor) return '0.00 BRL'; 
     const clean = String(valor).replace(/[^\d.]/g, '');
     const num = parseFloat(clean);
-    if (isNaN(num)) return '0.00 USD';
-    // Nota: O formato Meta Native prefere virgula para decimais em alguns locais, 
-    // mas o padrão internacional aceita ponto. Vamos manter BRL.
+    if (isNaN(num)) return '0.00 BRL';
     return `${num.toFixed(2)} BRL`;
 }
 
@@ -127,7 +125,6 @@ function buildLink(domain, id, format, phone) {
 // 3. CAMADA DE SAÍDA (BUILDERS)
 // ==========================================
 
-// --- OPÇÃO A: RSS 2.0 (Google Merchant) ---
 function generateRSS(items, clientDomain, params) {
     const rssItems = items.map(item => {
         try {
@@ -181,27 +178,22 @@ function generateRSS(items, clientDomain, params) {
     return `<?xml version="1.0" encoding="UTF-8"?>\n` + builder.build(finalObj);
 }
 
-// --- OPÇÃO B: META NATIVE (O XML do Cliente) ---
 function generateMetaNative(items, clientDomain, params) {
     const listingItems = items.map(item => {
         try {
             if (!item.id) return null;
             let titulo = item.title || `${item.type} em ${item.bairro}`;
             const finalLink = buildLink(clientDomain, item.id, params.url_format, params.phone);
-
-            // Mapeia disponibilidade
             const avail = mapListingType(item.operation) === 'for_rent_by_agent' ? 'for_rent' : 'for_sale';
 
             const itemObj = {
                 home_listing_id: item.id,
                 name: titulo,
-                availability: avail, // Tag específica desse formato
+                availability: avail,
                 description: item.description ? String(item.description).substring(0, 4900) : titulo,
                 price: formatPrice(item.price),
-                url: finalLink, // Tag URL em vez de Link
-                image: {
-                    url: item.images[0] || ""
-                },
+                url: finalLink, 
+                image: { url: item.images[0] || "" },
                 address: {
                     "@_format": "simple",
                     component: [
@@ -212,15 +204,12 @@ function generateMetaNative(items, clientDomain, params) {
                         { "@_name": "country", "#text": "Brazil" }
                     ]
                 },
-                latitude: "0", // Opcional mas bom ter
+                latitude: "0", 
                 longitude: "0",
                 neighborhood: item.bairro,
                 num_beds: item.quartos,
                 num_baths: item.banheiros
             };
-            
-            // Imagens adicionais neste formato costumam ser repetidas ou tags especificas
-            // Vamos manter simples conforme o exemplo
             return itemObj;
         } catch (e) { return null; }
     }).filter(i => i !== null);
@@ -242,20 +231,30 @@ function generateMetaNative(items, clientDomain, params) {
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
     
-    // Identificador
     let identifier = params.hash; 
+    
+    // CAPTURA DO CAMINHO DA URL
     if (!identifier && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
-        if (lastPart && lastPart !== 'feed') identifier = lastPart;
+        if (lastPart && lastPart !== 'feed') {
+            identifier = lastPart;
+        }
     }
+
+    // --- CORREÇÃO DO ".XML" ---
+    // Remove o .xml do final para poder usar o ID/Hash limpo nas buscas
+    if (identifier && identifier.toLowerCase().endsWith('.xml')) {
+        identifier = identifier.replace(/\.xml$/i, '');
+    }
+    // ---------------------------
+
     if (!identifier) return { statusCode: 400, body: "Identificador obrigatório." };
 
-    // Configurações
     const source = params.source || 'native'; 
-    const outputFormat = params.output_format || 'rss'; // 'rss' ou 'meta_native'
+    const outputFormat = params.output_format || 'rss'; 
     
-    // Busca Dados
+    // Busca Dados (Usa o identifier já limpo)
     let SOURCE_URL = "";
     if (source === 'olx' || source === 'group') {
         SOURCE_URL = `https://imob86.concept.inf.br/olx/${identifier}/grupo_olx.xml`;
@@ -271,7 +270,6 @@ exports.handler = async function(event, context) {
         const parser = new XMLParser({ ignoreAttributes: false });
         const jsonObj = parser.parse(xmlText);
 
-        // Normalização (Transforma em Objeto Padrão)
         let normalizedItems = [];
         if (source === 'olx' || source === 'group') {
             if (jsonObj.ListingDataFeed?.Listings?.Listing) {
@@ -285,7 +283,6 @@ exports.handler = async function(event, context) {
             }
         }
 
-        // Geração da Saída (Escolhe o Builder)
         let finalXml = "";
         const buildParams = { 
             url_format: params.url_format, 
