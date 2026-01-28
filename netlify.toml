@@ -1,7 +1,6 @@
 [build]
-  # O Netlify vai procurar na pasta padrão (netlify/functions) automaticamente
-  # O comando abaixo garante que ele instale o requests
   command = "pip install requests"
+  functions = "netlify/functions"
 
 [[redirects]]
   from = "/feed/*"
