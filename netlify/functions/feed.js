@@ -1,17 +1,17 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { XMLParser, XMLBuilder } = require("fast-xml-parser");
 
-// --- 1. CONFIGURAÇÃO DO SEU DOMÍNIO ---
-// Coloque aqui o site da sua imobiliária para não ficar "seusite.com.br"
-// Exemplo: "www.imobiliariax.com.br"
-const DOMINIO_PADRAO = "www.suaimobiliaria.com.br"; 
+// --- CONFIGURAÇÃO DE SEGURANÇA (WHATSAPP) ---
+// Se o cliente não tiver site, mandamos para o WhatsApp.
+// Coloque aqui um número padrão da sua empresa ou deixe vazio para o cliente preencher.
+// Formato: 55 + DDD + Numero (sem traços)
+const WHATSAPP_PADRAO = "5586999999999"; 
 
-// --- 2. FUNÇÕES DE TRADUÇÃO (Meta Ads) ---
+// --- FUNÇÕES DE MAPEAMENTO ---
 
 function mapListingType(operacao) {
     if (!operacao) return 'for_sale_by_agent'; 
     const op = String(operacao).toUpperCase();
-    // Se tiver "ALUGUEL" no nome, vira aluguel no Facebook
     if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO')) {
         return 'for_rent_by_agent';
     }
@@ -21,12 +21,9 @@ function mapListingType(operacao) {
 function mapPropertyType(tipo) {
     if (!tipo) return 'other';
     const t = String(tipo).toUpperCase();
-    
-    // Mapeamento Português -> Inglês (Padrão Meta)
     if (t.includes('APARTAMENTO') || t.includes('FLAT') || t.includes('KITNET')) return 'apartment';
     if (t.includes('CASA') || t.includes('SOBRADO')) return 'house';
     if (t.includes('LOTE') || t.includes('TERRENO')) return 'land';
-    
     return 'other'; 
 }
 
@@ -35,13 +32,37 @@ function formatPrice(valor) {
     return `${parseFloat(valor).toFixed(2)} BRL`;
 }
 
-// --- 3. FUNÇÃO PRINCIPAL ---
+// --- FUNÇÃO DE CONSTRUÇÃO DE LINK (A Mágica do {id}) ---
+function buildLink(domain, id, format, phone) {
+    // CENÁRIO 1: Sem domínio -> Manda pro WhatsApp
+    if (!domain || domain === 'null') {
+        const zapNumber = phone || WHATSAPP_PADRAO;
+        const text = encodeURIComponent(`Olá, tenho interesse no imóvel código ${id}`);
+        return `https://wa.me/${zapNumber}?text=${text}`;
+    }
+
+    const cleanDomain = domain.replace(/\/$/, ""); 
+
+    // CENÁRIO 2: Formato Customizado com Coringa {id}
+    // Ex: format="/imoveis?codigo={id}" vira "site.com/imoveis?codigo=123"
+    if (format && format.includes('{id}')) {
+        const path = format.replace('{id}', id);
+        // Garante que não duplique a barra inicial se o usuario esquecer
+        const cleanPath = path.startsWith('/') ? path : '/' + path;
+        return `https://${cleanDomain}${cleanPath}`;
+    }
+
+    // CENÁRIO 3: Padrão Imob86 (/imovel/123)
+    return `https://${cleanDomain}/imovel/${id}`;
+}
+
+// --- FUNÇÃO PRINCIPAL ---
 
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
     let clientHash = params.hash;
 
-    // Pega o hash da URL amigável (/feed/HASH)
+    // Pega hash da URL
     if (!clientHash && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
@@ -50,8 +71,10 @@ exports.handler = async function(event, context) {
         }
     }
 
-    // Define o domínio: ou vem pela URL (?domain=x) ou usa o padrão que definimos acima
-    const clientDomain = params.domain || DOMINIO_PADRAO;
+    // PARÂMETROS DA URL
+    const clientDomain = params.domain || null; // Se não passar, é null
+    const urlFormat = params.url_format || null; // Formato curinga
+    const clientPhone = params.phone || null; // Para o WhatsApp se não tiver site
 
     if (!clientHash) {
         return { statusCode: 400, body: "Hash obrigatorio." };
@@ -60,7 +83,6 @@ exports.handler = async function(event, context) {
     const SOURCE_URL = `https://xml.imob86.conceptsoft.com.br/Imob86XML/listar/${clientHash}`;
 
     try {
-        // Timeout aumentado para garantir que dê tempo de baixar o XML grande
         const response = await fetch(SOURCE_URL, { timeout: 15000 });
         if (!response.ok) {
             return { statusCode: 502, body: `Erro na Origem: ${response.status}` };
@@ -72,7 +94,6 @@ exports.handler = async function(event, context) {
 
         let imoveis = [];
         if (jsonObj.imoveis && jsonObj.imoveis.imovel) {
-            // Garante que seja sempre uma lista (Array)
             imoveis = Array.isArray(jsonObj.imoveis.imovel) ? jsonObj.imoveis.imovel : [jsonObj.imoveis.imovel];
         }
 
@@ -80,10 +101,8 @@ exports.handler = async function(event, context) {
         
         for (const imovel of imoveis) {
             try {
-                // Função auxiliar para evitar erro se o campo não existir
                 const getVal = (val) => {
                     if (val === undefined || val === null) return "";
-                    // Se for objeto vazio (ex: <tag/>), retorna vazio
                     if (typeof val === 'object' && Object.keys(val).length === 0) return ""; 
                     return val;
                 };
@@ -91,33 +110,26 @@ exports.handler = async function(event, context) {
                 const id = getVal(imovel.idNaImobiliaria);
                 if (!id) continue; 
 
-                // --- DADOS DO IMÓVEL ---
                 const bairro = imovel.bairro ? getVal(imovel.bairro.nome) : "";
                 const cidade = imovel.cidade ? getVal(imovel.cidade.nome) : "";
                 const tipoNome = imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "Imóvel";
                 
-                // Título Automático (se não tiver no XML)
                 let titulo = getVal(imovel.tituloSite);
                 if (!titulo) {
                     titulo = `${tipoNome} em ${bairro}`; 
                     if (cidade) titulo += ` - ${cidade}`;
                 }
 
-                // Descrição e Preço
                 const rawDesc = getVal(imovel.descricao);
                 const description = String(rawDesc).substring(0, 4900) || titulo;
                 const price = formatPrice(imovel.valor);
+                const operacao = getVal(imovel.operacao); 
+                const listingType = mapListingType(operacao); 
+                const propertyType = mapPropertyType(tipoNome);
 
-                // --- TRADUÇÃO DE CAMPOS (A Mágica acontece aqui) ---
-                const operacao = getVal(imovel.operacao); // Ex: ALUGUEL
-                const listingType = mapListingType(operacao); // Vira: for_rent_by_agent
+                // --- GERA O LINK (Site ou WhatsApp) ---
+                const link = buildLink(clientDomain, id, urlFormat, clientPhone);
 
-                const propertyType = mapPropertyType(tipoNome); // Ex: Casa -> house
-
-                // Link Correto
-                const link = `https://${clientDomain}/imovel/${id}`;
-
-                // Imagens
                 let additionalImages = [];
                 let imageLink = "";
                 
@@ -125,13 +137,10 @@ exports.handler = async function(event, context) {
                     const imgs = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
                     if (imgs.length > 0) {
                         imageLink = getVal(imgs[0].path);
-                        // Pega até 10 fotos adicionais
                         additionalImages = imgs.slice(1, 11).map(img => getVal(img.path)).filter(p => p !== "");
                     }
                 }
 
-                // --- CORREÇÃO DE QUARTOS/BANHEIROS ---
-                // Forçamos conversão para String para evitar que o número 0 suma
                 const quartos = String(getVal(imovel.quartos) || "0");
                 const banheiros = String(getVal(imovel.banheiros) || "0");
                 const area = String(getVal(imovel.area) || "0");
@@ -158,19 +167,16 @@ exports.handler = async function(event, context) {
                     "g:num_baths": banheiros,
                 };
 
-                // Adicionais condicionais (só adiciona se tiver dados)
                 if (additionalImages.length > 0) itemObj["g:additional_image_link"] = additionalImages;
                 if (area !== "0") itemObj["g:area"] = { "#text": area, "@_unit": "sq m" };
 
                 rssItems.push(itemObj);
 
             } catch (err) {
-                console.log(`Erro item ${imovel.idNaImobiliaria}:`, err.message);
                 continue;
             }
         }
 
-        // XML Final
         const builder = new XMLBuilder({ format: true, ignoreAttributes: false, cdataPropName: "title" });
         const finalObj = {
             rss: {
@@ -179,7 +185,7 @@ exports.handler = async function(event, context) {
                 channel: {
                     title: "Feed Imoveis",
                     description: "Integração Imob86 Meta Ads",
-                    link: `https://${clientDomain}`,
+                    link: clientDomain ? `https://${clientDomain}` : `https://wa.me/${clientPhone || WHATSAPP_PADRAO}`,
                     item: rssItems
                 }
             }
