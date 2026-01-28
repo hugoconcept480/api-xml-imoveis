@@ -227,7 +227,7 @@ exports.handler = async function(event, context) {
                 "@_version": "2.0",
                 channel: {
                     title: "Feed Imoveis",
-                    description: `Feed gerado via ${source === 'group' || source === 'olx' ? 'Grupo Zap/OLX' : 'Imob86 Nativo'}`,
+                    description: `Feed gerado via ${source === 'group' || source === 'olx' ? 'Imob86 Grupo'' : 'Imob86 Nativo'}`,
                     link: clientDomain ? `https://${clientDomain}` : `https://wa.me/`,
                     item: rssItems
                 }
