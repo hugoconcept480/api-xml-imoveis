@@ -1,20 +1,15 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { XMLParser, XMLBuilder } = require("fast-xml-parser");
 
-// --- CONFIGURAÇÃO DE SEGURANÇA (WHATSAPP) ---
-// Se o cliente não tiver site, mandamos para o WhatsApp.
-// Coloque aqui um número padrão da sua empresa ou deixe vazio para o cliente preencher.
-// Formato: 55 + DDD + Numero (sem traços)
-const WHATSAPP_PADRAO = "5586999999999"; 
+// --- CONFIGURAÇÕES ---
+const DOMINIO_VITRINE = "vitrine.imob86.conceptsoft.com.br"; 
+const WHATSAPP_PADRAO = "5586999999999"; // Preencha com o seu se quiser
 
-// --- FUNÇÕES DE MAPEAMENTO ---
-
+// --- MAPAS ---
 function mapListingType(operacao) {
     if (!operacao) return 'for_sale_by_agent'; 
     const op = String(operacao).toUpperCase();
-    if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO')) {
-        return 'for_rent_by_agent';
-    }
+    if (op.includes('ALUGUEL') || op.includes('LOCAÇÃO')) return 'for_rent_by_agent';
     return 'for_sale_by_agent';
 }
 
@@ -32,9 +27,8 @@ function formatPrice(valor) {
     return `${parseFloat(valor).toFixed(2)} BRL`;
 }
 
-// --- FUNÇÃO DE CONSTRUÇÃO DE LINK (A Mágica do {id}) ---
+// --- GERADOR DE LINKS ---
 function buildLink(domain, id, format, phone) {
-    // CENÁRIO 1: Sem domínio -> Manda pro WhatsApp
     if (!domain || domain === 'null') {
         const zapNumber = phone || WHATSAPP_PADRAO;
         const text = encodeURIComponent(`Olá, tenho interesse no imóvel código ${id}`);
@@ -43,26 +37,20 @@ function buildLink(domain, id, format, phone) {
 
     const cleanDomain = domain.replace(/\/$/, ""); 
 
-    // CENÁRIO 2: Formato Customizado com Coringa {id}
-    // Ex: format="/imoveis?codigo={id}" vira "site.com/imoveis?codigo=123"
     if (format && format.includes('{id}')) {
         const path = format.replace('{id}', id);
-        // Garante que não duplique a barra inicial se o usuario esquecer
         const cleanPath = path.startsWith('/') ? path : '/' + path;
         return `https://${cleanDomain}${cleanPath}`;
     }
 
-    // CENÁRIO 3: Padrão Imob86 (/imovel/123)
     return `https://${cleanDomain}/imovel/${id}`;
 }
 
 // --- FUNÇÃO PRINCIPAL ---
-
 exports.handler = async function(event, context) {
     const params = event.queryStringParameters || {};
     let clientHash = params.hash;
 
-    // Pega hash da URL
     if (!clientHash && event.path) {
         const parts = event.path.split('/');
         const lastPart = parts[parts.length - 1];
@@ -71,10 +59,9 @@ exports.handler = async function(event, context) {
         }
     }
 
-    // PARÂMETROS DA URL
-    const clientDomain = params.domain || null; // Se não passar, é null
-    const urlFormat = params.url_format || null; // Formato curinga
-    const clientPhone = params.phone || null; // Para o WhatsApp se não tiver site
+    const clientDomain = params.domain || null; 
+    const urlFormat = params.url_format || null; 
+    const clientPhone = params.phone || null; 
 
     if (!clientHash) {
         return { statusCode: 400, body: "Hash obrigatorio." };
@@ -110,6 +97,7 @@ exports.handler = async function(event, context) {
                 const id = getVal(imovel.idNaImobiliaria);
                 if (!id) continue; 
 
+                // Dados Básicos
                 const bairro = imovel.bairro ? getVal(imovel.bairro.nome) : "";
                 const cidade = imovel.cidade ? getVal(imovel.cidade.nome) : "";
                 const tipoNome = imovel.tipoImovel ? getVal(imovel.tipoImovel.nome) : "Imóvel";
@@ -123,16 +111,16 @@ exports.handler = async function(event, context) {
                 const rawDesc = getVal(imovel.descricao);
                 const description = String(rawDesc).substring(0, 4900) || titulo;
                 const price = formatPrice(imovel.valor);
-                const operacao = getVal(imovel.operacao); 
-                const listingType = mapListingType(operacao); 
+                const listingType = mapListingType(getVal(imovel.operacao)); 
                 const propertyType = mapPropertyType(tipoNome);
 
-                // --- GERA O LINK (Site ou WhatsApp) ---
                 const link = buildLink(clientDomain, id, urlFormat, clientPhone);
 
+                // Imagens (Tratamento reforçado para lista vazia)
                 let additionalImages = [];
                 let imageLink = "";
                 
+                // Verifica se existe a tag imagens e se ela não é vazia
                 if (imovel.imagens && imovel.imagens.imagem) {
                     const imgs = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem];
                     if (imgs.length > 0) {
@@ -141,6 +129,7 @@ exports.handler = async function(event, context) {
                     }
                 }
 
+                // Quartos/Banheiros
                 const quartos = String(getVal(imovel.quartos) || "0");
                 const banheiros = String(getVal(imovel.banheiros) || "0");
                 const area = String(getVal(imovel.area) || "0");
@@ -153,7 +142,7 @@ exports.handler = async function(event, context) {
                     "g:listing_type": listingType, 
                     "g:property_type": propertyType,
                     "link": link,
-                    "g:image_link": imageLink,
+                    "g:image_link": imageLink, // Se estiver vazio, o Facebook pode alertar, mas não quebra o XML
                     "g:address": {
                         "@_format": "struct",
                         "g:addr1": getVal(imovel.endereco),
@@ -173,6 +162,7 @@ exports.handler = async function(event, context) {
                 rssItems.push(itemObj);
 
             } catch (err) {
+                console.log(`Erro item ${imovel.idNaImobiliaria}:`, err.message);
                 continue;
             }
         }
@@ -185,7 +175,7 @@ exports.handler = async function(event, context) {
                 channel: {
                     title: "Feed Imoveis",
                     description: "Integração Imob86 Meta Ads",
-                    link: clientDomain ? `https://${clientDomain}` : `https://wa.me/${clientPhone || WHATSAPP_PADRAO}`,
+                    link: clientDomain ? `https://${clientDomain}` : `https://wa.me/`,
                     item: rssItems
                 }
             }
@@ -197,7 +187,10 @@ exports.handler = async function(event, context) {
             statusCode: 200,
             headers: {
                 'Content-Type': 'application/xml; charset=utf-8',
-                'Cache-Control': 'public, max-age=3600'
+                // MUDANÇA CRUCIAL: Desliga o cache para testes
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             },
             body: finalXml
         };
