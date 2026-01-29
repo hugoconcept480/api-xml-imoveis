@@ -16,6 +16,13 @@ function normalizeNative(imovel) {
         const raw = Array.isArray(imovel.imagens.imagem) ? imovel.imagens.imagem : [imovel.imagens.imagem]; 
         imgs = raw.map(img => getVal(img.path)).filter(p => p !== ""); 
     }
+    
+    // Tratamento de Lat/Long Nativo
+    let lat = parseFloat(getVal(imovel.latitude));
+    let long = parseFloat(getVal(imovel.longitude));
+    if (isNaN(lat) || lat === 0) lat = null;
+    if (isNaN(long) || long === 0) long = null;
+
     return { 
         id: getVal(imovel.idNaImobiliaria), 
         title: getVal(imovel.tituloSite), 
@@ -31,6 +38,8 @@ function normalizeNative(imovel) {
         quartos: String(getVal(imovel.quartos) || "0"), 
         banheiros: String(getVal(imovel.banheiros) || "0"), 
         area: String(getVal(imovel.area) || "0"), 
+        lat: lat,
+        long: long,
         images: imgs 
     };
 }
@@ -53,6 +62,20 @@ function normalizeOLX(listing) {
     
     const loc = listing.Location || {};
     
+    // CORREÇÃO 1: Concatena Rua + Número para o endereço ficar válido
+    let fullAddress = getVal(loc.Address);
+    const streetNumber = getVal(loc.StreetNumber);
+    if (streetNumber && streetNumber !== "") {
+        fullAddress = `${fullAddress}, ${streetNumber}`;
+    }
+
+    // CORREÇÃO 2: Limpeza de Lat/Long (OLX não costuma mandar lat/long nesse XML, mas garantimos)
+    // Se não tiver ou for zero, fica null
+    let lat = null;
+    let long = null;
+    if (loc.Latitude && parseFloat(loc.Latitude) !== 0) lat = parseFloat(loc.Latitude);
+    if (loc.Longitude && parseFloat(loc.Longitude) !== 0) long = parseFloat(loc.Longitude);
+
     return { 
         id: getVal(listing.ListingID), 
         title: getVal(listing.Title), 
@@ -64,11 +87,12 @@ function normalizeOLX(listing) {
         cidade: getVal(loc.City), 
         estado: loc.State && loc.State['#text'] ? loc.State['#text'] : "PI", 
         cep: getVal(loc.PostalCode), 
-        endereco: getVal(loc.Address), 
+        endereco: fullAddress, // Endereço corrigido
         quartos: String(getVal(details.Bedrooms) || "0"), 
         banheiros: String(getVal(details.Bathrooms) || "0"), 
-        // CORREÇÃO AQUI: Adicionado o terceiro parêntese para fechar o String()
         area: String(getVal(details.LivingArea && details.LivingArea['#text'] ? details.LivingArea['#text'] : (details.LivingArea || "0"))),
+        lat: lat,
+        long: long,
         images: imgs 
     };
 }
@@ -133,11 +157,25 @@ function generateRSS(items, clientDomain, params) {
                 "g:property_type": mapPropertyType(item.type), 
                 "link": finalLink, 
                 "g:image_link": item.images[0] || "", 
-                "g:address": { "@_format": "struct", "g:addr1": item.endereco, "g:city": item.cidade, "g:region": item.estado, "g:postal_code": item.cep, "g:country": "BR" }, 
+                "g:address": { 
+                    "@_format": "struct", 
+                    "g:addr1": item.endereco, 
+                    "g:city": item.cidade, 
+                    "g:region": item.estado, 
+                    "g:postal_code": item.cep, 
+                    "g:country": "BR" // CORREÇÃO 3: BR em vez de Brazil
+                }, 
                 "g:neighborhood": item.bairro, 
                 "g:num_beds": item.quartos, 
                 "g:num_baths": item.banheiros, 
             };
+            
+            // Só adiciona lat/long se existirem (não nulos)
+            if (item.lat && item.long) {
+                itemObj["g:latitude"] = item.lat;
+                itemObj["g:longitude"] = item.long;
+            }
+
             if (item.images.length > 1) itemObj["g:additional_image_link"] = item.images.slice(1, 11);
             if (item.area && item.area !== "0") itemObj["g:area"] = { "#text": item.area, "@_unit": "sq m" };
             return itemObj;
@@ -165,9 +203,27 @@ function generateMetaNative(items, clientDomain, params) {
                 price: formatPrice(item.price), 
                 url: finalLink, 
                 image: { url: item.images[0] || "" }, 
-                address: { "@_format": "simple", component: [ { "@_name": "addr1", "#text": item.endereco }, { "@_name": "city", "#text": item.cidade }, { "@_name": "region", "#text": item.estado }, { "@_name": "postal_code", "#text": item.cep }, { "@_name": "country", "#text": "Brazil" } ] }, 
-                latitude: "0", longitude: "0", neighborhood: item.bairro, num_beds: item.quartos, num_baths: item.banheiros 
+                address: { 
+                    "@_format": "simple", 
+                    component: [ 
+                        { "@_name": "addr1", "#text": item.endereco }, 
+                        { "@_name": "city", "#text": item.cidade }, 
+                        { "@_name": "region", "#text": item.estado }, 
+                        { "@_name": "postal_code", "#text": item.cep }, 
+                        { "@_name": "country", "#text": "BR" } // CORREÇÃO 3: BR em vez de Brazil
+                    ] 
+                }, 
+                neighborhood: item.bairro, 
+                num_beds: item.quartos, 
+                num_baths: item.banheiros 
             };
+
+            // Só adiciona lat/long se existirem
+            if (item.lat && item.long) {
+                itemObj.latitude = item.lat;
+                itemObj.longitude = item.long;
+            }
+
             return itemObj;
         } catch (e) { return null; }
     }).filter(i => i !== null);
@@ -224,7 +280,6 @@ exports.handler = async function(event, context) {
                 clientPhone = parts[i+1];
                 i++;
             }
-            // Decodificador de Formato Customizado (Base64)
             if (part === 'fmt' && parts[i+1]) {
                 try {
                     const encoded = parts[i+1];
